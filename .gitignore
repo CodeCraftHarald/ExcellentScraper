@@ -135,6 +135,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+ExcellentScraper-env/
 
 # Spyder project settings
 .spyderproject
@@ -167,8 +168,35 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# VSCode
+.vscode/
+*.code-workspace
+
 # Ruff stuff:
 .ruff_cache/
 
 # PyPI configuration file
 .pypirc
+
+# Application-specific files
+/scraped_data/
+*.xlsx
+*.xls
+*.csv
+*.json
+chromedriver.exe
+chromedriver
+chromedriver_*.exe
+chromedriver_*
+geckodriver.exe
+geckodriver
+msedgedriver.exe
+msedgedriver
+
+# Selenium temporary files
+.wdm/
+
+# Temporary files
+*.tmp
+*.bak
+.DS_Store
