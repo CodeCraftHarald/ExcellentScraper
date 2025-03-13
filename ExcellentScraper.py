@@ -32,7 +32,8 @@ class ExcelLentScraper(ctk.CTk):
         
         # Initialize window
         self.title("ExcellentScraper")
-        self.geometry("800x700")
+        self.geometry("1000x800")  # Wider and taller initial size
+        self.minsize(800, 600)     # Set minimum size
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=0)  # For the header
         self.grid_rowconfigure(1, weight=1)  # For the main frame
@@ -55,6 +56,9 @@ class ExcelLentScraper(ctk.CTk):
         
         # Start the status update thread
         self._start_status_update_thread()
+        
+        # Bind keyboard shortcuts
+        self.bind("<Control-r>", lambda event: self._reset_url_fields())
     
     def _create_ui(self):
         """Create the main UI components"""
@@ -68,7 +72,7 @@ class ExcelLentScraper(ctk.CTk):
         # App title
         title_label = ctk.CTkLabel(
             self.header_frame,
-            text="Excel-lent Scraper",
+            text="ExcellentScraper",
             font=ctk.CTkFont(size=24, weight="bold")
         )
         title_label.grid(row=0, column=0, sticky="w")
@@ -86,19 +90,43 @@ class ExcelLentScraper(ctk.CTk):
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_rowconfigure(0, weight=1)  # Let content_frame expand
         
-        # URL input section
-        self.url_frame = ctk.CTkFrame(self.main_frame)
+        # Create inner content frame to organize components
+        content_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        content_frame.grid(row=0, column=0, sticky="nsew")
+        content_frame.grid_columnconfigure(0, weight=1)
+        content_frame.grid_rowconfigure(0, weight=0)  # URL frame
+        content_frame.grid_rowconfigure(1, weight=0)  # Control frame
+        content_frame.grid_rowconfigure(2, weight=1)  # Log frame (should expand)
+        
+        # URL input section - make it more compact
+        self.url_frame = ctk.CTkFrame(content_frame)
         self.url_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        self.url_frame.grid_columnconfigure(0, weight=1)
+        
+        # Configure rows for URL entries (up to max_urls + additional rows for label and buttons)
+        for i in range(self.max_urls + 3):  # +3 for label, spacing, and button row
+            self.url_frame.grid_rowconfigure(i, weight=0)
         
         url_label = ctk.CTkLabel(
             self.url_frame,
-            text="Enter URLs to scrape (max 10):",
+            text="Enter URLs to scrape (all 10 fields ready):",
             font=ctk.CTkFont(size=16)
         )
         url_label.grid(row=0, column=0, sticky="w", padx=10, pady=(10, 5))
         
-        # Button frame for URL entries
+        # Create a container frame for the URL entries
+        self.url_entries_container = ctk.CTkFrame(self.url_frame, fg_color="transparent")
+        self.url_entries_container.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+        self.url_entries_container.grid_columnconfigure(0, weight=1)  # First column
+        self.url_entries_container.grid_columnconfigure(1, weight=1)  # Second column
+        
+        # Configure rows for the two-column layout
+        for i in range((self.max_urls // 2) + (self.max_urls % 2)):  # Rows needed for an even distribution
+            self.url_entries_container.grid_rowconfigure(i, weight=0)
+        
+        # Button frame for URL entries - position it after the URL entries
         self.url_button_frame = ctk.CTkFrame(self.url_frame, fg_color="transparent")
         self.url_button_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
         
@@ -106,7 +134,7 @@ class ExcelLentScraper(ctk.CTk):
         self.add_url_button = ctk.CTkButton(
             self.url_button_frame,
             text="Add URL",
-            command=self._add_url_entry
+            command=lambda: self._add_url_entry(animate=True)
         )
         self.add_url_button.grid(row=0, column=0, padx=5, pady=5)
         
@@ -120,11 +148,23 @@ class ExcelLentScraper(ctk.CTk):
         )
         self.remove_url_button.grid(row=0, column=1, padx=5, pady=5)
         
-        # Now that buttons are defined, add the first URL entry
-        self._add_url_entry()
+        # Reset button to clear all URL fields
+        self.reset_button = ctk.CTkButton(
+            self.url_button_frame,
+            text="Reset Fields (Ctrl+R)",
+            command=self._reset_url_fields,
+            fg_color="#3A7EBF",
+            hover_color="#5B95D0",
+            width=140  # Make the button wider to fit the text
+        )
+        self.reset_button.grid(row=0, column=2, padx=5, pady=5)
+        
+        # Create all ten URL entries at startup instead of just one
+        for _ in range(self.max_urls):
+            self._add_url_entry(animate=False)
         
         # Control frame
-        self.control_frame = ctk.CTkFrame(self.main_frame)
+        self.control_frame = ctk.CTkFrame(content_frame)
         self.control_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=10)
         
         # Scrape button
@@ -148,7 +188,7 @@ class ExcelLentScraper(ctk.CTk):
         self.merge_button.grid(row=0, column=1, padx=10, pady=10)
         
         # Status and log section
-        self.log_frame = ctk.CTkFrame(self.main_frame)
+        self.log_frame = ctk.CTkFrame(content_frame)
         self.log_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
         self.log_frame.grid_rowconfigure(1, weight=1)
         self.log_frame.grid_columnconfigure(0, weight=1)
@@ -179,26 +219,31 @@ class ExcelLentScraper(ctk.CTk):
         self.progress_bar.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 20))
         self.progress_bar.set(0)
     
-    def _add_url_entry(self):
+    def _add_url_entry(self, animate=True):
         """Add a new URL entry field"""
         if len(self.url_entries) >= self.max_urls:
             self._update_status("Maximum number of URLs reached (10)")
             return
         
         # Create a frame for the URL entry
-        entry_idx = len(self.url_entries) + 1
-        entry_frame = ctk.CTkFrame(self.url_frame, fg_color="transparent")
-        entry_frame.grid(row=entry_idx, column=0, sticky="ew", padx=10, pady=2)
+        entry_idx = len(self.url_entries)  # 0-based index
+        
+        # Calculate row and column position in the grid
+        row = entry_idx // 2  # Integer division for row number
+        col = entry_idx % 2   # Remainder for column (0 or 1)
+        
+        entry_frame = ctk.CTkFrame(self.url_entries_container, fg_color="transparent")
+        entry_frame.grid(row=row, column=col, sticky="ew", padx=10, pady=5)
         entry_frame.grid_columnconfigure(1, weight=1)
         
         # Label with the entry number
-        entry_label = ctk.CTkLabel(entry_frame, text=f"{entry_idx}.", width=20)
+        entry_label = ctk.CTkLabel(entry_frame, text=f"{entry_idx + 1}.", width=20)
         entry_label.grid(row=0, column=0, padx=(0, 5))
         
         # URL entry field
         url_entry = ctk.CTkEntry(
             entry_frame,
-            placeholder_text=f"Enter URL {entry_idx}"
+            placeholder_text=f"Enter URL {entry_idx + 1}"
         )
         url_entry.grid(row=0, column=1, sticky="ew", padx=5)
         
@@ -207,8 +252,8 @@ class ExcelLentScraper(ctk.CTk):
         # Update add/remove button states
         self._update_url_buttons()
         
-        # Add a little sparkle animation
-        if entry_idx > 1:  # Don't animate the first entry
+        # Add a little sparkle animation only if requested
+        if animate and entry_idx > 0:  # Don't animate the first entry
             self._animate_entry_addition(entry_frame)
     
     def _animate_entry_addition(self, frame):
@@ -251,6 +296,51 @@ class ExcelLentScraper(ctk.CTk):
         
         # Update add/remove button states
         self._update_url_buttons()
+    
+    def _reset_url_fields(self):
+        """Clear all URL entry fields without removing them"""
+        # Check if there are entries to clear
+        if not self.url_entries:
+            return
+            
+        # Clear each URL entry
+        for _, url_entry in self.url_entries:
+            url_entry.delete(0, 'end')  # Clear the entry
+        
+        # Show a brief status message
+        self._update_status("All URL fields have been cleared")
+        
+        # Add a visual feedback effect
+        self._flash_url_container()
+    
+    def _flash_url_container(self):
+        """Provide visual feedback that the URL fields have been reset"""
+        original_color = self.url_entries_container.cget("fg_color")
+        highlight_color = "#2a6496" if ctk.get_appearance_mode() == "Dark" else "#a2d2ff"
+        
+        def _flash_step(step=0, max_steps=10):
+            if step <= max_steps:
+                # Gradually fade from highlight color to original
+                blend_factor = step / max_steps
+                r1, g1, b1 = [int(highlight_color[1:3], 16), int(highlight_color[3:5], 16), int(highlight_color[5:7], 16)]
+                
+                # Handle the case where original_color might be "transparent"
+                if original_color == "transparent":
+                    r2, g2, b2 = [40, 40, 40] if ctk.get_appearance_mode() == "Dark" else [240, 240, 240]
+                else:
+                    r2, g2, b2 = [int(original_color[1:3], 16), int(original_color[3:5], 16), int(original_color[5:7], 16)]
+                
+                r = int(r1 * (1 - blend_factor) + r2 * blend_factor)
+                g = int(g1 * (1 - blend_factor) + g2 * blend_factor)
+                b = int(b1 * (1 - blend_factor) + b2 * blend_factor)
+                
+                current_color = f"#{r:02x}{g:02x}{b:02x}"
+                self.url_entries_container.configure(fg_color=current_color)
+                self.after(30, lambda: _flash_step(step + 1, max_steps))
+            else:
+                self.url_entries_container.configure(fg_color=original_color)
+        
+        _flash_step()
     
     def _update_url_buttons(self):
         """Update the state of the add/remove URL buttons"""
@@ -394,7 +484,7 @@ class ExcelLentScraper(ctk.CTk):
         
         # Complete
         self.progress_bar.set(1.0)
-        self._update_status("Scraping completed")
+        self._update_status("Scraping completed - You can now reset the fields for a new batch")
         
         # Re-enable buttons
         self.scrape_button.configure(state="normal", text="Start Scraping")
